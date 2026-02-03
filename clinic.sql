@@ -223,7 +223,7 @@ INSERT INTO `doctor_unavailable_dates` (`id`, `doctor_id`, `unavailable_date`, `
 CREATE TABLE `medical_records` (
   `id` int(11) NOT NULL,
   `patient_id` int(11) NOT NULL,
-  `doctor_id` int(11) NOT NULL,
+  `doctor_id` int NOT NULL,
   `visit_date` date NOT NULL,
   `diagnosis` text DEFAULT NULL,
   `treatment` text DEFAULT NULL,
