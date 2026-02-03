@@ -15,7 +15,7 @@ $appointment_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
 // Fetch Full Details
 $sql = "
-    SELECT a.id AS appt_id, a.appointment_date, a.status AS appt_status, a.created_at AS booked_at, a.notes,
+    SELECT a.id AS appt_id, a.appointment_datetime, a.status AS appt_status, a.created_at AS booked_at, a.notes,
            d.specialization, d.qualification, u_doc.name AS doctor_name, u_doc.email AS doctor_email,
            p.name AS patient_name, p.phone AS patient_phone, p.address AS patient_address,
            b.id AS bill_id, b.amount, b.status AS bill_status, b.payment_method, b.payment_date,
@@ -224,7 +224,7 @@ if (!$data) {
                         <tbody>
                             <tr>
                                 <td>General Consultation</td>
-                                <td><?= date('l, F j, Y', strtotime($data['appointment_date'])) ?> at <?= date('h:i A', strtotime($data['appointment_date'])) ?></td>
+                                <td><?= date('l, F j, Y', strtotime($data['appointment_datetime'])) ?> at <?= date('h:i A', strtotime($data['appointment_datetime'])) ?></td>
                                 <td><?= ucfirst($data['appt_status']) ?></td>
                             </tr>
                         </tbody>

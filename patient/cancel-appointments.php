@@ -23,7 +23,7 @@ $appointment = null;
 // Fetch appointment
 if ($appointment_id > 0) {
     $stmt = $conn->prepare("
-        SELECT a.id, a.appointment_date, a.appointment_time, a.notes, a.status,
+        SELECT a.id, a.appointment_datetime, a.appointment_time, a.notes, a.status,
                du.name AS doctor_name
         FROM appointments a
         JOIN doctors d ON a.doctor_id = d.id
@@ -39,7 +39,7 @@ if ($appointment_id > 0) {
     } elseif ($appointment['status'] === 'cancelled') {
         $error = 'This appointment is already cancelled.';
     } else {
-        $apptDateTime = new DateTime($appointment['appointment_date'] . ' ' . $appointment['appointment_time']);
+        $apptDateTime = new DateTime($appointment['appointment_datetime'] . ' ' . $appointment['appointment_time']);
         $now = new DateTime();
         if ($apptDateTime < $now) {
             $error = 'Cannot cancel past appointments.';
@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
             <div class="card" style="margin-bottom: 30px; padding: 25px; background: white; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.08);">
                 <h3>Appointment Details</h3>
                 <p><strong>Doctor:</strong> Dr. <?= htmlspecialchars($appointment['doctor_name']) ?></p>
-                <p><strong>Date & Time:</strong> <?= date('l, d F Y - h:i A', strtotime($appointment['appointment_date'] . ' ' . $appointment['appointment_time'])) ?></p>
+                <p><strong>Date & Time:</strong> <?= date('l, d F Y - h:i A', strtotime($appointment['appointment_datetime'] . ' ' . $appointment['appointment_time'])) ?></p>
                 <p><strong>Reason for Visit:</strong> <?= htmlspecialchars($appointment['notes'] ?: 'Not specified') ?></p>
                 <p><strong>Current Status:</strong> <?= ucfirst($appointment['status']) ?></p>
             </div>

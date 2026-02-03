@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = $_POST['id'] ?? '';
     $patient_id = $_POST['patient_id'] ?? '';
     $doctor_id = $_POST['doctor_id'] ?? '';
-    $date = $_POST['appointment_date'] ?? '';
+    $date = $_POST['appointment_datetime'] ?? '';
     $time = $_POST['appointment_time'] ?? '';
     $status = $_POST['status'] ?? 'pending';
     $reason = $_POST['reason'] ?? '';
@@ -46,13 +46,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         if ($id) {
             // Update
-            $stmt = $conn->prepare("UPDATE appointments SET patient_id=?, doctor_id=?, appointment_date=?, appointment_time=?, status=?, reason=?, notes=? WHERE id=?");
+            $stmt = $conn->prepare("UPDATE appointments SET patient_id=?, doctor_id=?, appointment_datetime=?, , status=?, reason=?, notes=? WHERE id=?");
             $stmt->bind_param("iisssssi", $patient_id, $doctor_id, $date, $time, $status, $reason, $notes, $id);
             if ($stmt->execute()) $success = "Appointment updated successfully.";
             else $error = "Update failed: " . $conn->error;
         } else {
             // Insert
-            $stmt = $conn->prepare("INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status, reason, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt = $conn->prepare("INSERT INTO appointments (patient_id, doctor_id, appointment_datetime,  status, reason, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
             $stmt->bind_param("iisssss", $patient_id, $doctor_id, $date, $time, $status, $reason, $notes);
             if ($stmt->execute()) $success = "Appointment scheduled successfully.";
             else $error = "Creation failed: " . $conn->error;
@@ -123,7 +123,7 @@ $query = "
     JOIN doctors d ON a.doctor_id = d.id
     JOIN users u_d ON d.user_id = u_d.id
     $where_sql
-    ORDER BY a.appointment_date DESC, a.appointment_time DESC
+    ORDER BY a.appointment_datetime DESC, a.appointment_time DESC
     LIMIT ? OFFSET ?
 ";
 $params[] = $limit;
@@ -414,8 +414,8 @@ $stats = $stats_res->fetch_assoc();
                                     <td><?= htmlspecialchars($row['patient_name']) ?></td>
                                     <td><?= htmlspecialchars($row['doctor_name']) ?></td>
                                     <td>
-                                        <div><?= date('M d, Y', strtotime($row['appointment_date'])) ?></div>
-                                        <div style="font-size:0.8rem; color:var(--text-muted);"><?= date('h:i A', strtotime($row['appointment_time'])) ?></div>
+                                        <div><?= date('M d, Y', strtotime($row['appointment_datetime'])) ?></div>
+                                        <div style="font-size:0.8rem; color:var(--text-muted);"><?= date('h:i A', strtotime($row['appointment_datetime'])) ?></div>
                                     </td>
                                     <td>
                                         <span class="status-badge status-<?= strtolower($row['status']) ?>">
@@ -428,7 +428,7 @@ $stats = $stats_res->fetch_assoc();
                                                 data-id="<?= $row['id'] ?>"
                                                 data-patient="<?= $row['patient_id'] ?>"
                                                 data-doctor="<?= $row['doctor_id'] ?>"
-                                                data-date="<?= $row['appointment_date'] ?>"
+                                                data-date="<?= $row['appointment_datetime'] ?>"
                                                 data-time="<?= $row['appointment_time'] ?>"
                                                 data-status="<?= $row['status'] ?>"
                                                 data-reason="<?= htmlspecialchars($row['reason']) ?>"
@@ -501,7 +501,7 @@ $stats = $stats_res->fetch_assoc();
                     </div>
                     <div class="form-group">
                         <label>Date</label>
-                        <input type="date" name="appointment_date" id="appointment_date" class="form-control" required>
+                        <input type="date" name="appointment_datetime" id="appointment_datetime" class="form-control" required>
                     </div>
                     <div class="form-group">
                         <label>Time</label>
@@ -557,7 +557,7 @@ document.querySelectorAll('.btn-edit').forEach(btn => {
         document.getElementById('appt-id').value = btn.dataset.id;
         document.getElementById('patient_id').value = btn.dataset.patient;
         document.getElementById('doctor_id').value = btn.dataset.doctor;
-        document.getElementById('appointment_date').value = btn.dataset.date;
+        document.getElementById('appointment_datetime').value = btn.dataset.date;
         document.getElementById('appointment_time').value = btn.dataset.time;
         document.getElementById('status').value = btn.dataset.status;
         document.getElementById('reason').value = btn.dataset.reason;

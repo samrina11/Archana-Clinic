@@ -53,7 +53,7 @@ $total_appointments = getCount(
 $upcoming_appointments = getCount(
     $conn,
     'appointments',
-    "doctor_id = $doctor_id AND appointment_date >= CURDATE() AND status != 'cancelled'"
+    "doctor_id = $doctor_id AND appointment_datetime >= CURDATE() AND status != 'cancelled'"
 );
 
 // Count pending appointments specifically

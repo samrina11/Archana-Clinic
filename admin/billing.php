@@ -11,121 +11,128 @@ if (!$auth->isLoggedIn() || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$user = $auth->getUser();
 $success = '';
 $error = '';
 
-// Handle Add or Update Billing
+// =====================
+// HANDLE POST ACTIONS
+// =====================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Check if this is a "Mark Paid" action
+
+    // Mark Paid (Cash)
     if (isset($_POST['mark_paid_id'])) {
-        $pay_id = intval($_POST['mark_paid_id']);
+        $id = intval($_POST['mark_paid_id']);
         $stmt = $conn->prepare("UPDATE billing SET status='paid', payment_method='Cash' WHERE id=?");
-        $stmt->bind_param("i", $pay_id);
-        if ($stmt->execute()) {
-            $success = "Bill #$pay_id marked as Paid (Cash)!";
-        } else {
-            $error = "Failed to update payment status!";
-        }
-    } 
-    // Otherwise handle normal Add/Edit form
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $success = "Invoice marked as paid (Cash).";
+    }
+
+    // Add / Update Billing
     else {
         $id = $_POST['id'] ?? '';
-        $patient_id = $_POST['patient_id'] ?? '';
-        $appointment_id = $_POST['appointment_id'] ?? '';
-        $amount = $_POST['amount'] ?? 0;
-        $status = $_POST['status'] ?? 'unpaid';
-        $payment_method = $_POST['payment_method'] ?? '';
-        $due_date = $_POST['due_date'] ?? null;
-        $notes = $_POST['notes'] ?? '';
+        $patient_id = $_POST['patient_id'];
+        $appointment_id = $_POST['appointment_id'];
+        $amount = $_POST['amount'];
+        $status = $_POST['status'];
+        $payment_method = $_POST['payment_method'];
+        $due_date = $_POST['due_date'] ?: null;
+        $notes = $_POST['notes'];
 
-        // If due_date is empty string, make it NULL
-        if (empty($due_date)) $due_date = null;
-
-        if (empty($patient_id) || empty($appointment_id) || empty($amount)) {
-            $error = 'Patient, Appointment, and Amount are required!';
+        if ($id) {
+            $stmt = $conn->prepare("
+                UPDATE billing 
+                SET patient_id=?, appointment_id=?, amount=?, status=?, payment_method=?, due_date=?, notes=? 
+                WHERE id=?
+            ");
+            $stmt->bind_param("iidssssi",
+                $patient_id, $appointment_id, $amount,
+                $status, $payment_method, $due_date, $notes, $id
+            );
+            $stmt->execute();
+            $success = "Invoice updated successfully.";
         } else {
-            if ($id) {
-                // Update billing
-                $stmt = $conn->prepare("UPDATE billing SET patient_id=?, appointment_id=?, amount=?, status=?, payment_method=?, due_date=?, notes=? WHERE id=?");
-                $stmt->bind_param("iiissssi", $patient_id, $appointment_id, $amount, $status, $payment_method, $due_date, $notes, $id);
-                if ($stmt->execute()) $success = "Billing record updated successfully!";
-                else $error = "Failed to update billing!";
-            } else {
-                // Insert new billing
-                $stmt = $conn->prepare("INSERT INTO billing (patient_id, appointment_id, amount, status, payment_method, due_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt->bind_param("iisssss", $patient_id, $appointment_id, $amount, $status, $payment_method, $due_date, $notes);
-                if ($stmt->execute()) $success = "New bill created successfully!";
-                else $error = "Failed to add billing!";
-            }
+            $stmt = $conn->prepare("
+                INSERT INTO billing (patient_id, appointment_id, amount, status, payment_method, due_date, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->bind_param("iidssss",
+                $patient_id, $appointment_id, $amount,
+                $status, $payment_method, $due_date, $notes
+            );
+            $stmt->execute();
+            $success = "New invoice created successfully.";
         }
     }
 }
 
-// Handle Delete Billing
+// =====================
+// DELETE BILLING
+// =====================
 if (isset($_GET['delete_id'])) {
-    $delete_id = intval($_GET['delete_id']);
+    $id = intval($_GET['delete_id']);
     $stmt = $conn->prepare("DELETE FROM billing WHERE id=?");
-    $stmt->bind_param("i", $delete_id);
-    if ($stmt->execute()) $success = "Billing record deleted successfully!";
-    else $error = "Failed to delete billing!";
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $success = "Invoice deleted successfully.";
 }
 
-// --- Pagination & Search Logic ---
-$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+// =====================
+// PAGINATION & SEARCH
+// =====================
+$page = max(1, intval($_GET['page'] ?? 1));
 $limit = 10;
 $offset = ($page - 1) * $limit;
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+$search = trim($_GET['search'] ?? '');
 
-$where_clauses = [];
+$where = '';
 $params = [];
-$types = "";
+$types = '';
 
-// Search Filter
-if (!empty($search)) {
-    $where_clauses[] = "(b.id LIKE ? OR p.name LIKE ? OR u_doctor.name LIKE ?)";
-    $search_term = "%" . $search . "%";
-    $params[] = $search_term;
-    $params[] = $search_term;
-    $params[] = $search_term;
-    $types .= "sss";
+if ($search) {
+    $where = "WHERE (b.id LIKE ? OR u_patient.name LIKE ? OR u_doctor.name LIKE ?)";
+    $like = "%$search%";
+    $params = [$like, $like, $like];
+    $types = "sss";
 }
 
-$where_sql = "";
-if (count($where_clauses) > 0) {
-    $where_sql = "WHERE " . implode(" AND ", $where_clauses);
-}
-
-// 1. Get Total Count
-$count_query = "
-    SELECT COUNT(*) as total 
+// =====================
+// COUNT QUERY (FIXED)
+// =====================
+$count_sql = "
+    SELECT COUNT(*) total
     FROM billing b
     JOIN patients p ON b.patient_id = p.id
+    JOIN users u_patient ON p.user_id = u_patient.id
     JOIN appointments a ON b.appointment_id = a.id
     JOIN doctors d ON a.doctor_id = d.id
     JOIN users u_doctor ON d.user_id = u_doctor.id
-    $where_sql
+    $where
 ";
-$stmt_count = $conn->prepare($count_query);
-if (!empty($types)) {
-    $stmt_count->bind_param($types, ...$params);
-}
-$stmt_count->execute();
-$total_rows = $stmt_count->get_result()->fetch_assoc()['total'];
+
+$stmt = $conn->prepare($count_sql);
+if ($types) $stmt->bind_param($types, ...$params);
+$stmt->execute();
+$total_rows = $stmt->get_result()->fetch_assoc()['total'];
 $total_pages = ceil($total_rows / $limit);
 
-// 2. Fetch Records
-$query = "
+// =====================
+// MAIN QUERY (FIXED)
+// =====================
+$sql = "
     SELECT 
-        b.id, b.amount, b.status, b.payment_method, b.due_date, b.notes, b.created_at,
-        p.id as patient_id, p.name as patient_name, a.id as appointment_id, a.appointment_date, a.appointment_time,
-        u_doctor.name as doctor_name
+        b.*, 
+        p.id AS patient_id,
+        u_patient.name AS patient_name,
+        u_doctor.name AS doctor_name,
+        a.appointment_datetime
     FROM billing b
     JOIN patients p ON b.patient_id = p.id
+    JOIN users u_patient ON p.user_id = u_patient.id
     JOIN appointments a ON b.appointment_id = a.id
     JOIN doctors d ON a.doctor_id = d.id
     JOIN users u_doctor ON d.user_id = u_doctor.id
-    $where_sql
+    $where
     ORDER BY b.created_at DESC
     LIMIT ? OFFSET ?
 ";
@@ -134,31 +141,43 @@ $params[] = $limit;
 $params[] = $offset;
 $types .= "ii";
 
-$stmt = $conn->prepare($query);
+$stmt = $conn->prepare($sql);
 $stmt->bind_param($types, ...$params);
 $stmt->execute();
-$result = $stmt->get_result();
-$billing_records = [];
-while ($row = $result->fetch_assoc()) $billing_records[] = $row;
+$billing_records = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-// Billing stats (Global)
-$stats_query = "SELECT 
-    COUNT(*) as total_bills,
-    SUM(amount) as total_amount,
-    SUM(CASE WHEN status='paid' THEN amount ELSE 0 END) as paid_amount,
-    SUM(CASE WHEN status='unpaid' THEN amount ELSE 0 END) as unpaid_amount,
-    SUM(CASE WHEN status='partial' THEN amount ELSE 0 END) as partial_amount
-FROM billing";
-$stats_result = $conn->query($stats_query);
-$stats = $stats_result->fetch_assoc();
+// =====================
+// STATS
+// =====================
+$stats = $conn->query("
+    SELECT 
+        COUNT(*) total_bills,
+        SUM(amount) total_amount,
+        SUM(CASE WHEN status='paid' THEN amount ELSE 0 END) paid_amount,
+        SUM(CASE WHEN status='unpaid' THEN amount ELSE 0 END) unpaid_amount,
+        SUM(CASE WHEN status='partial' THEN amount ELSE 0 END) partial_amount
+    FROM billing
+")->fetch_assoc();
 
-// Fetch patients & appointments for dropdown
-$patients = $conn->query("SELECT id, name FROM patients ORDER BY name ASC");
-$appointments = $conn->query("SELECT a.id, a.appointment_date, a.appointment_time, d.user_id, u.name as doctor_name
-FROM appointments a 
-JOIN doctors d ON a.doctor_id = d.id 
-JOIN users u ON d.user_id = u.id ORDER BY a.appointment_date DESC");
+// =====================
+// DROPDOWNS
+// =====================
+$patients = $conn->query("
+    SELECT p.id, u.name 
+    FROM patients p 
+    JOIN users u ON p.user_id = u.id
+    ORDER BY u.name
+");
+
+$appointments = $conn->query("
+    SELECT a.id, a.appointment_datetime, u.name doctor_name
+    FROM appointments a
+    JOIN doctors d ON a.doctor_id = d.id
+    JOIN users u ON d.user_id = u.id
+    ORDER BY a.appointment_datetime DESC
+");
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -537,7 +556,7 @@ JOIN users u ON d.user_id = u.id ORDER BY a.appointment_date DESC");
                                 <td><?= htmlspecialchars($bill['patient_name']) ?></td>
                                 <td>
                                     <div style="font-size:0.9rem; font-weight:500;"><?= htmlspecialchars($bill['doctor_name']) ?></div>
-                                    <div style="font-size:0.8rem; color:var(--text-muted);"><?= date('M d, Y', strtotime($bill['appointment_date'])) ?></div>
+                                    <div style="font-size:0.8rem; color:var(--text-muted);"><?= date('M d, Y', strtotime($bill['appointment_datetime'])) ?></div>
                                 </td>
                                 <td style="font-weight:600;">Rs. <?= number_format($bill['amount'], 2) ?></td>
                                 <td>
@@ -633,7 +652,7 @@ JOIN users u ON d.user_id = u.id ORDER BY a.appointment_date DESC");
                         <select name="appointment_id" id="appointment_id" class="form-control" required>
                             <option value="">Select Appointment</option>
                             <?php while($a = $appointments->fetch_assoc()): ?>
-                                <option value="<?= $a['id'] ?>"><?= date('M d', strtotime($a['appointment_date'])) ?> - <?= htmlspecialchars($a['doctor_name']) ?></option>
+                                <option value="<?= $a['id'] ?>"><?= date('M d', strtotime($a['appointment_datetime'])) ?> - <?= htmlspecialchars($a['doctor_name']) ?></option>
                             <?php endwhile; ?>
                         </select>
                     </div>

@@ -38,7 +38,7 @@ if (!$appointment) {
 
 // 2. Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $new_date = trim($_POST['appointment_date'] ?? '');
+    $new_date = trim($_POST['appointment_datetime'] ?? '');
     $new_reason = trim($_POST['reason'] ?? '');
 
     if (!$new_date || !$new_reason) {
@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Appointment must be rescheduled at least 24 hours in advance.';
         } else {
             // Update
-            $update_stmt = $conn->prepare("UPDATE appointments SET appointment_date = ?, notes = ? WHERE id = ?");
+            $update_stmt = $conn->prepare("UPDATE appointments SET appointment_datetime = ?, notes = ? WHERE id = ?");
             $update_stmt->bind_param("ssi", $new_date, $new_reason, $appointment_id);
             
             if ($update_stmt->execute()) {
@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $success = 'Appointment updated successfully.';
                 // Refresh data
-                $appointment['appointment_date'] = $new_date;
+                $appointment['appointment_datetime'] = $new_date;
                 $appointment['notes'] = $new_reason;
             } else {
                 $error = 'Failed to update appointment.';
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Date Constraints
 $min_date = date('Y-m-d\TH:i', strtotime('+1 day'));
 $max_date = date('Y-m-d\TH:i', strtotime('+3 months'));
-$current_appt_date = date('Y-m-d\TH:i', strtotime($appointment['appointment_date']));
+$current_appt_date = date('Y-m-d\TH:i', strtotime($appointment['appointment_datetime']));
 
 ?>
 <!DOCTYPE html>
@@ -202,10 +202,10 @@ $current_appt_date = date('Y-m-d\TH:i', strtotime($appointment['appointment_date
 
                         <!-- Date Selection -->
                         <div class="form-group">
-                            <label for="appointment_date">New Date & Time</label>
+                            <label for="appointment_datetime">New Date & Time</label>
                             <input type="datetime-local" 
-                                   id="appointment_date" 
-                                   name="appointment_date" 
+                                   id="appointment_datetime" 
+                                   name="appointment_datetime" 
                                    class="form-control"
                                    min="<?= $min_date ?>"
                                    max="<?= $max_date ?>"

@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 $stmt = $conn->prepare("
     SELECT 
         a.id,
-        a.appointment_date,
+        a.appointment_datetime,
         a.appointment_time,
         a.status,
         p.age,
@@ -122,7 +122,7 @@ $stmt = $conn->prepare("
     JOIN patients p ON a.patient_id = p.id
     JOIN users u ON p.user_id = u.id
     WHERE a.doctor_id = ?
-    ORDER BY a.appointment_date DESC, a.appointment_time DESC
+    ORDER BY a.appointment_datetime DESC, a.appointment_time DESC
 ");
 $stmt->bind_param("i", $doctor_id);
 $stmt->execute();
@@ -169,7 +169,7 @@ $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     <td>#<?= $apt['id'] ?></td>
     <td><?= htmlspecialchars($apt['patient_name']) ?></td>
     <td>
-        <?= date('M d, Y', strtotime($apt['appointment_date'])) ?>
+        <?= date('M d, Y', strtotime($apt['appointment_datetime'])) ?>
         <?= date('h:i A', strtotime($apt['appointment_time'])) ?>
     </td>
     <td>

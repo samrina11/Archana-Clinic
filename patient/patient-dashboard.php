@@ -37,7 +37,7 @@ $stmt = $conn->prepare("
     JOIN doctors d ON a.doctor_id = d.id
     JOIN users u ON d.user_id = u.id
     WHERE a.patient_id = ?
-    ORDER BY a.appointment_date DESC
+    ORDER BY a.appointment_datetime DESC
     LIMIT 5
 ");
 $stmt->bind_param("i", $patient['patient_id']);
@@ -51,7 +51,7 @@ $count_stmt->bind_param("i", $patient['patient_id']);
 $count_stmt->execute();
 $total_appts = $count_stmt->get_result()->fetch_assoc()['total'];
 
-$upcoming_stmt = $conn->prepare("SELECT COUNT(*) as upcoming FROM appointments WHERE patient_id = ? AND appointment_date > NOW() AND status != 'cancelled'");
+$upcoming_stmt = $conn->prepare("SELECT COUNT(*) as upcoming FROM appointments WHERE patient_id = ? AND appointment_datetime > NOW() AND status != 'cancelled'");
 $upcoming_stmt->bind_param("i", $patient['patient_id']);
 $upcoming_stmt->execute();
 $upcoming_count = $upcoming_stmt->get_result()->fetch_assoc()['upcoming'];
@@ -358,8 +358,8 @@ $upcoming_count = $upcoming_stmt->get_result()->fetch_assoc()['upcoming'];
                                                 <div style="font-size: 0.8rem; color: var(--text-muted);"><?= htmlspecialchars($row['specialization']) ?></div>
                                             </td>
                                             <td>
-                                                <div><?= date('M d, Y', strtotime($row['appointment_date'])) ?></div>
-                                                <div style="font-size: 0.8rem; color: var(--text-muted);"><?= date('h:i A', strtotime($row['appointment_date'])) ?></div>
+                                                <div><?= date('M d, Y', strtotime($row['appointment_datetime'])) ?></div>
+                                                <div style="font-size: 0.8rem; color: var(--text-muted);"><?= date('h:i A', strtotime($row['appointment_datetime'])) ?></div>
                                             </td>
                                             <td><?= htmlspecialchars(substr($row['notes'], 0, 30)) . (strlen($row['notes']) > 30 ? '...' : '') ?></td>
                                             <td><span class="status-badge <?= $statusClass ?>"><?= ucfirst($row['status']) ?></span></td>

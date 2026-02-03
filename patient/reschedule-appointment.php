@@ -23,7 +23,7 @@ $appointment = null;
 // Fetch current appointment details
 if ($appointment_id > 0) {
     $stmt = $conn->prepare("
-        SELECT a.id, a.doctor_id, a.appointment_date, a.appointment_time, a.notes, a.status,
+        SELECT a.id, a.doctor_id, a.appointment_datetime, a.appointment_time, a.notes, a.status,
                du.name AS doctor_name
         FROM appointments a
         JOIN doctors d ON a.doctor_id = d.id
@@ -39,7 +39,7 @@ if ($appointment_id > 0) {
     } elseif ($appointment['status'] === 'cancelled') {
         $error = 'Cannot reschedule a cancelled appointment.';
     } else {
-        $apptDateTime = new DateTime($appointment['appointment_date'] . ' ' . $appointment['appointment_time']);
+        $apptDateTime = new DateTime($appointment['appointment_datetime'] . ' ' . $appointment['appointment_time']);
         $now = new DateTime();
         if ($apptDateTime < $now) {
             $error = 'Cannot reschedule past appointments.';
@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
             $error = "Reason for rescheduling must be at least 10 characters.";
         } elseif (strtotime($new_datetime) <= strtotime('+24 hours')) {
             $error = "Rescheduled appointment must be at least 24 hours in the future.";
-        } elseif ($new_date === $appointment['appointment_date'] && $new_time === $appointment['appointment_time']) {
+        } elseif ($new_date === $appointment['appointment_datetime'] && $new_time === $appointment['appointment_time']) {
             $error = "New date/time is the same as current. No change needed.";
         } else {
             $doctor_id = $appointment['doctor_id'];
@@ -128,8 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                         $booked = $conn->prepare("
                             SELECT 1 FROM appointments 
                             WHERE doctor_id = ? 
-                              AND appointment_date = ?
-                              AND appointment_time = ?
+                              AND appointment_datetime = ?
+                              
                               AND status NOT IN ('cancelled','rejected')
                               AND id != ?
                             LIMIT 1
@@ -143,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                             // Update appointment
                             $stmt = $conn->prepare("
                                 UPDATE appointments 
-                                SET appointment_date = ?, 
+                                SET appointment_datetime = ?, 
                                     appointment_time = ?, 
                                     notes = CONCAT(notes, '\nReschedule reason: ', ?),
                                     status = 'rescheduled_pending',
@@ -208,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
             <div class="card" style="margin-bottom: 30px; padding: 25px; background: white; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.08);">
                 <h3>Current Appointment</h3>
                 <p><strong>Doctor:</strong> Dr. <?= htmlspecialchars($appointment['doctor_name']) ?></p>
-                <p><strong>Date & Time:</strong> <?= date('l, d F Y - h:i A', strtotime($appointment['appointment_date'] . ' ' . $appointment['appointment_time'])) ?></p>
+                <p><strong>Date & Time:</strong> <?= date('l, d F Y - h:i A', strtotime($appointment['appointment_datetime'] . ' ' . $appointment['appointment_time'])) ?></p>
                 <p><strong>Reason:</strong> <?= htmlspecialchars($appointment['notes'] ?: 'Not specified') ?></p>
                 <p><strong>Status:</strong> <?= ucfirst($appointment['status']) ?></p>
             </div>
@@ -278,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                                 $booked = $conn->prepare("
                                     SELECT 1 FROM appointments 
                                     WHERE doctor_id = ? 
-                                      AND appointment_date = ?
+                                      AND appointment_dattime = ?
                                       AND appointment_time = ?
                                       AND status NOT IN ('cancelled','rejected')
                                       AND id != ?

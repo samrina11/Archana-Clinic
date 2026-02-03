@@ -20,7 +20,7 @@
         and diagnostic service for patients suffering from common gynecological problems.
          Our team is very experienced and always looking to provide patients with the best and most affordable treatment.</p>
       <p>Our main motto is to provide quality health &amp; make patients healthy with available diagnostic services and treatment. This clinic has specialties in gynecology,
-         general medicine, pediatrics, Radiology and Cardiology. Our specialists are affiliated with the most 
+         internal medicine, ophthalmology and Cardiology. Our specialists are affiliated with the most 
          reputable hospitals like Bir hospital, Shahid
           Ganga Lal hospital, maternity hospital thapathali, and Shree Birendra Army Hospital. Archana clinic has sufficient parking space.</p>
 
@@ -163,13 +163,13 @@
     <div class="contact-box">
       <i class="fas fa-phone"></i>
       <h3>Call Us</h3>
-      <p>Emergency: +91 98765 43210<br>Appointments: +91 98765 43211<br>Reception: +91 98765 43212</p>
+      <p>Emergency: +91 98765 43210<br>Appointments: +91 98765 43211</p>
     </div>
 
     <div class="contact-box">
       <i class="fas fa-envelope"></i>
       <h3>Email Us</h3>
-      <p>info@archanapolyclinic.com.np<br>emergency@archanapolyclinic.com</p>
+      <p>info@archanaclinic.com.np<br>emergency@archanaclinic.com</p>
     </div>
   </section>
 

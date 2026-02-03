@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <main style="max-width:1200px; margin:40px auto;">
   <h1 style="text-align:left; color: #0c74a6;">Contact Us</h1>
-  <p>Please write to <strong style="color:skyblue">info@archanapolyclinic.com.np</strong> to get corporate tie-up with us.</p>
+  <p>Please write to <strong style="color:skyblue">info@archanaclinic.com.np</strong> to get corporate tie-up with us.</p>
   <p>For individual inquiries, please fill the form below:</p>
 
   <?php if (!empty($message)): ?>

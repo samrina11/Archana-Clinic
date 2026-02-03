@@ -84,7 +84,7 @@ $sql = "
     JOIN users u ON d.user_id = u.id
     LEFT JOIN billing b ON b.appointment_id = a.id
     $where_clause
-    ORDER BY a.appointment_date DESC
+    ORDER BY a.appointment_datetime DESC
     LIMIT ? OFFSET ?
 ";
 
@@ -483,8 +483,8 @@ $appointments = $stmt->get_result();
                                         </div>
                                     </td>
                                     <td>
-                                        <div style="font-weight: 500; font-size: 0.9rem;"><?= date('M d, Y', strtotime($row['appointment_date'])) ?></div>
-                                        <div style="font-size: 0.8rem; color: var(--text-muted);"><?= date('h:i A', strtotime($row['appointment_date'])) ?></div>
+                                        <div style="font-weight: 500; font-size: 0.9rem;"><?= date('M d, Y', strtotime($row['appointment_datetime'])) ?></div>
+                                        <div style="font-size: 0.8rem; color: var(--text-muted);"><?= date('h:i A', strtotime($row['appointment_datetime'])) ?></div>
                                     </td>
                                     <td>
                                         <?php if ($row['billing_status'] == 'paid'): ?>

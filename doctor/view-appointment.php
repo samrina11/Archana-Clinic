@@ -118,10 +118,10 @@ $total_pages = ceil($total_rows / $limit);
 // Get Data
 $query_sql = "
     SELECT 
-        a.id, a.appointment_date, a.appointment_time, a.status, a.notes,
+        a.id, a.appointment_datetime,  a.status, a.notes,
         u.name AS patient_name, u.email AS patient_email, p.phone AS patient_phone
     $query_base
-    ORDER BY a.appointment_date DESC, a.appointment_time ASC
+    ORDER BY a.appointment_datetime DESC, a.appointment_time ASC
     LIMIT ? OFFSET ?
 ";
 $params[] = $limit;
@@ -138,7 +138,7 @@ $today = date('Y-m-d');
 $stats_stmt = $conn->prepare("
     SELECT 
         COUNT(*) as total,
-        SUM(CASE WHEN appointment_date = ? THEN 1 ELSE 0 END) as today_count,
+        SUM(CASE WHEN appointment_datetime = ? THEN 1 ELSE 0 END) as today_count,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count
     FROM appointments 
     WHERE doctor_id = ?
@@ -382,8 +382,8 @@ $stats = $stats_stmt->get_result()->fetch_assoc();
                                 <?php while ($row = $appointments->fetch_assoc()): ?>
                                 <tr>
                                     <td>
-                                        <div style="font-weight:600;"><?= date('M d, Y', strtotime($row['appointment_date'])) ?></div>
-                                        <div style="font-size:0.85rem; color:var(--text-muted);"><?= date('h:i A', strtotime($row['appointment_time'])) ?></div>
+                                        <div style="font-weight:600;"><?= date('M d, Y', strtotime($row['appointment_datetime'])) ?></div>
+                                        <div style="font-size:0.85rem; color:var(--text-muted);"><?= date('h:i A', strtotime($row['appointment_datetime'])) ?></div>
                                     </td>
                                     <td>
                                         <div style="font-weight:500;"><?= htmlspecialchars($row['patient_name']) ?></div>

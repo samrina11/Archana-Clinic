@@ -1,4 +1,4 @@
-<?php
+<?php 
 session_start();
 require_once '../config/database.php';
 
@@ -11,16 +11,24 @@ $user_id = $_SESSION['user_id'];
 $error = '';
 $success = '';
 
-// Fetch existing patient data
+// ---------------------------
+// Fetch user + patient data
+// ---------------------------
 $stmt = $conn->prepare("
-    SELECT phone, date_of_birth, gender, address,
-           emergency_phone, medical_history, blood_group, allergies
-    FROM patients WHERE user_id = ?
+    SELECT 
+        u.phone AS phone,
+        p.date_of_birth, p.gender, p.address,
+        p.emergency_phone, p.medical_history,
+        p.blood_group, p.allergies
+    FROM users u
+    LEFT JOIN patients p ON u.id = p.user_id
+    WHERE u.id = ?
 ");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $data = $stmt->get_result()->fetch_assoc();
 
+// If patient row is missing, create default array
 $patient = $data ?? [
     'phone' => '',
     'date_of_birth' => '',
@@ -32,6 +40,9 @@ $patient = $data ?? [
     'allergies' => ''
 ];
 
+// ---------------------------
+// Handle profile update
+// ---------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $phone = trim($_POST['phone'] ?? '');
@@ -43,13 +54,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $blood_group = $_POST['blood_group'] ?? '';
     $allergies = trim($_POST['allergies'] ?? '');
 
-    // Optional: Add phone validation
-    if (!empty($phone) && !preg_match('/^[0-9+\-\s]{10}$/', $phone)) {
-        $error = "Invalid phone number";
+    // Validate phone
+    if (!empty($phone) && !preg_match('/^\d{10}$/', $phone)) {
+        $error = "Phone number must be exactly 10 digits";
     }
 
     if (empty($error)) {
-        // Use INSERT ... ON DUPLICATE KEY UPDATE to ensure only one row per user_id
+        // ---------------------------
+        // If patient row doesn't exist, insert it
+        // ---------------------------
+        $stmt_check = $conn->prepare("SELECT user_id FROM patients WHERE user_id = ?");
+        $stmt_check->bind_param("i", $user_id);
+        $stmt_check->execute();
+        $stmt_check->store_result();
+
+        if ($stmt_check->num_rows == 0) {
+            // Insert new patient row and copy phone from users if empty
+            if (empty($phone)) {
+                $stmt_phone = $conn->prepare("SELECT phone FROM users WHERE id = ?");
+                $stmt_phone->bind_param("i", $user_id);
+                $stmt_phone->execute();
+                $phone_result = $stmt_phone->get_result()->fetch_assoc();
+                $phone = $phone_result['phone'] ?? '';
+            }
+        }
+
+        // Save/update patients table
         $stmt = $conn->prepare("
             INSERT INTO patients 
                 (user_id, phone, date_of_birth, gender, address,
@@ -78,12 +108,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: patient-dashboard.php");
             exit;
         } else {
-            $error = "Failed to update profile";
+            $error = "Failed to update profile: " . $stmt->error;
         }
     }
 }
 
+// ---------------------------
 // Calculate age
+// ---------------------------
 $age = '';
 if (!empty($patient['date_of_birth'])) {
     $age = (new DateTime())->diff(new DateTime($patient['date_of_birth']))->y;
@@ -95,26 +127,13 @@ if (!empty($patient['date_of_birth'])) {
 <head>
 <meta charset="UTF-8">
 <title>My Profile</title>
-
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
 <style>
-body {
-    background: #f4f6f9;
-}
-.profile-card {
-    max-width: 820px;
-    margin: 40px auto;
-}
-.profile-header {
-    background: linear-gradient(135deg, #0d6efd, #0dcaf0);
-    color: white;
-    padding: 20px;
-    border-radius: 10px 10px 0 0;
-}
+body { background: #f4f6f9; }
+.profile-card { max-width: 820px; margin: 40px auto; }
+.profile-header { background: linear-gradient(135deg, #0d6efd, #0dcaf0); color: white; padding: 20px; border-radius: 10px 10px 0 0; }
 </style>
 </head>
-
 <body>
 
 <div class="container profile-card">

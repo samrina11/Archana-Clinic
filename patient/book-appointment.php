@@ -41,16 +41,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $doctor_id = intval($_POST['doctor_id'] ?? 0);
     $reason = trim($_POST['reason'] ?? '');
-    $raw_datetime = trim($_POST['appointment_date'] ?? '');
+    $raw_datetime = trim($_POST['appointment_datetime'] ?? '');
 
     // 🔴 CRITICAL FIX: convert datetime-local → MySQL DATETIME
-    $appointment_date = date('Y-m-d H:i:s', strtotime($raw_datetime));
+    $appointment_datetime = date('Y-m-d H:i:s', strtotime($raw_datetime));
 
     if (!$doctor_id || !$raw_datetime || !$reason) {
         $error = "All fields are required.";
     } elseif (strlen($reason) < 10) {
         $error = "Reason must be at least 10 characters.";
-    } elseif (strtotime($appointment_date) <= strtotime('+1 day')) {
+    } elseif (strtotime($appointment_datetime) <= strtotime('+1 day')) {
         $error = "Appointment must be at least 24 hours in advance.";
     } else {
 
@@ -67,10 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $check_stmt = $conn->prepare("
             SELECT id FROM appointments
             WHERE doctor_id = ?
-              AND appointment_date = ?
+              AND appointment_datetime = ?
               AND status != 'cancelled'
         ");
-        $check_stmt->bind_param("is", $doctor_id, $appointment_date);
+        $check_stmt->bind_param("is", $doctor_id, $appointment_datetime);
         $check_stmt->execute();
 
         if ($check_stmt->get_result()->num_rows > 0) {
@@ -80,21 +80,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Insert appointment
             $insert_stmt = $conn->prepare("
                 INSERT INTO appointments
-                (patient_id, doctor_id, appointment_date, notes, status, created_at)
+                (patient_id, doctor_id, appointment_datetime, notes, status, created_at)
                 VALUES (?, ?, ?, ?, 'pending', NOW())
             ");
             $insert_stmt->bind_param(
                 "iiss",
                 $patient['id'],
                 $doctor_id,
-                $appointment_date,
+                $appointment_datetime,
                 $reason
             );
 
             if ($insert_stmt->execute()) {
 
                 $appointment_id = $conn->insert_id;
-                $due_date = date('Y-m-d', strtotime($appointment_date));
+                $due_date = date('Y-m-d', strtotime($appointment_datetime));
 
                 // Billing
                 $bill_stmt = $conn->prepare("
@@ -116,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'billing_id' => $conn->insert_id,
                         'amount' => $consultation_fee,
                         'appt_id' => $appointment_id,
-                        'date' => $appointment_date
+                        'date' => $appointment_datetime
                     ];
                     $success = "Appointment booked successfully.";
                 } else {
@@ -134,6 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $min_date = date('Y-m-d\TH:i', strtotime('+1 day'));
 $max_date = date('Y-m-d\TH:i', strtotime('+3 months'));
 ?>
+
 
 
 <!DOCTYPE html>
@@ -457,14 +458,14 @@ $max_date = date('Y-m-d\TH:i', strtotime('+3 months'));
                                     </div>
 
                                     <div class="form-group">
-                                        <label for="appointment_date">Preferred Date & Time</label>
+                                        <label for="appointment_datetime">Preferred Date & Time</label>
                                         <input type="datetime-local" 
-                                               id="appointment_date" 
-                                               name="appointment_date" 
+                                               id="appointment_datetime" 
+                                               name="appointment_datetime" 
                                                class="form-input"
                                                min="<?= $min_date ?>"
                                                max="<?= $max_date ?>"
-                                               value="<?= isset($_POST['appointment_date']) ? htmlspecialchars($_POST['appointment_date']) : '' ?>"
+                                               value="<?= isset($_POST['appointment_datetime']) ? htmlspecialchars($_POST['appointment_datetime']) : '' ?>"
                                                required>
                                         <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Must be 24h in advance.</p>
                                     </div>
@@ -581,7 +582,7 @@ $max_date = date('Y-m-d\TH:i', strtotime('+3 months'));
             });
         }
 
-        const dateInput = document.getElementById('appointment_date');
+        const dateInput = document.getElementById('appointment_datetime');
         if(dateInput) {
             dateInput.addEventListener('change', function() {
                 const selected = new Date(this.value);
