@@ -1,147 +1,169 @@
 <?php
 session_start();
-require_once '../config/database.php';
-require_once '../config/auth.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/auth.php';
 
-// --------------------
-// Check if logged in as patient
-// --------------------
+/* =========================
+   ACCESS CONTROL
+========================= */
 if (!$auth->isLoggedIn() || $_SESSION['role'] !== 'patient') {
-    header('Location: ../login.php');
+    header('Location: /clinic/login.php');
     exit;
 }
 
 $user = $auth->getUser();
 if (!$user) {
     session_destroy();
-    header('Location: ../login.php');
+    header('Location: /clinic/login.php');
     exit;
 }
 
-// --------------------
-// Get patient ID
-// --------------------
-$patient_query = "SELECT id FROM patients WHERE user_id = ?";
-$stmt_patient = $conn->prepare($patient_query);
-$stmt_patient->bind_param("i", $user['id']);
-$stmt_patient->execute();
-$patient_result = $stmt_patient->get_result();
-$patient = $patient_result->fetch_assoc();
+/* =========================
+   GET PATIENT ID
+========================= */
+$stmt = $conn->prepare("SELECT id FROM patients WHERE user_id = ? LIMIT 1");
+$stmt->bind_param("i", $user['id']);
+$stmt->execute();
+$patient = $stmt->get_result()->fetch_assoc();
 
 if (!$patient) {
-    die("No patient record found. Please contact admin.");
+    die("Patient profile not found. Please contact admin.");
 }
-$patient_id = $patient['id'];
 
-// --------------------
-// Fetch medical records
-// --------------------
-$records_query = "SELECT 
-    mr.id,
-    mr.visit_date,
-    mr.diagnosis,
-    mr.treatment,
-    mr.prescription,
-    mr.notes,
-    u.name AS doctor_name,
-    d.specialization,
-    mr.created_at
-FROM medical_records mr
-JOIN doctors d ON mr.doctor_id = d.id
-JOIN users u ON d.user_id = u.id
-WHERE mr.patient_id = ?
-ORDER BY mr.visit_date DESC";
+$patient_id = (int)$patient['id'];
 
-$stmt_records = $conn->prepare($records_query);
-$stmt_records->bind_param("i", $patient_id);
-$stmt_records->execute();
-$result = $stmt_records->get_result();
-
-$records = [];
-while ($row = $result->fetch_assoc()) {
-    $records[] = $row;
-}
+/* =========================
+   FETCH PATIENT MEDICAL RECORDS
+========================= */
+$stmt = $conn->prepare("
+    SELECT mr.visit_date, mr.diagnosis, mr.treatment, mr.prescription, mr.notes,
+           u.name AS doctor_name, d.specialization
+    FROM medical_records mr
+    JOIN doctors d ON mr.doctor_id = d.id
+    JOIN users u ON d.user_id = u.id
+    WHERE mr.patient_id = ?
+    ORDER BY mr.visit_date DESC, mr.created_at DESC
+");
+$stmt->bind_param("i", $patient_id);
+$stmt->execute();
+$records = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Medical Records - Patient Dashboard</title>
-    <link rel="stylesheet" href="../styles.css"> <!-- current folder -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Medical Records - Patient</title>
+<link rel="stylesheet" href="/clinic/styles.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --bg-body: #f8fafc;
+    --bg-card: #ffffff;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+}
+
+body.dashboard-page {
+    background-color: var(--bg-body);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: var(--text-main);
+}
+
+.manage-container {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+}
+
+.page-header { margin-bottom: 2rem; }
+.page-header h1 { font-size: 1.75rem; font-weight: 700; color: var(--text-main); margin: 0; }
+.page-header p { color: var(--text-muted); margin: 0.25rem 0 0; }
+
+/* Record cards */
+.record-card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.record-card h3 { margin: 0 0 0.5rem 0; color: var(--primary); }
+.record-card p { margin: 0.25rem 0; color: var(--text-muted); }
+.record-body { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
+.record-body h4 { margin: 0 0 5px 0; color: var(--text-main); }
+.record-body p { margin: 0; color: var(--text-muted); }
+
+.record-prescription { margin-top: 15px;  color: var(--text-muted); }
+.record-notes { margin-top: 15px; color: var(--text-muted); }
+
+.no-records { text-align: center; padding: 40px; color: var(--text-muted); }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .record-body { grid-template-columns: 1fr; }
+}
+</style>
 </head>
+
 <body class="dashboard-page">
-    <div class="dashboard-container">
-        <?php include __DIR__ . '/../include/sidebar-patient.php'; ?>
+<div class="dashboard-container">
 
-        <div class="dashboard-content">
-            <div class="top-bar">
-                <h1>📋 Medical Records</h1>
-                <div class="user-info">
-                    <span>Welcome, <?php echo htmlspecialchars($user['name']); ?></span>
-                </div>
+    <?php include __DIR__ . '/../include/sidebar-patient.php'; ?>
+
+    <main class="dashboard-content">
+        <?php include __DIR__ . '/../include/dnav.php'; ?>
+
+        <div class="manage-container">
+            <div class="page-header">
+                <h1>📋 Your Medical Records</h1>
+                <p>View your medical history and prescriptions.</p>
             </div>
 
-            <div class="appointments-section">
-                <h2>Your Medical History</h2>
-                <?php if (!empty($records)): ?>
-                    <?php foreach ($records as $record): ?>
-                        <div class="record-card">
-                            <div class="record-header">
-                                <h3>Visit on <?php echo date('M d, Y', strtotime($record['visit_date'])); ?></h3>
-                                <p><strong>Doctor:</strong> <?php echo htmlspecialchars($record['doctor_name']); ?> (<?php echo htmlspecialchars($record['specialization']); ?>)</p>
-                            </div>
+            <?php if (count($records) > 0): ?>
+                <?php foreach ($records as $r): ?>
+                    <div class="record-card">
+                        <h3>Visit on <?= date('M d, Y', strtotime($r['visit_date'])) ?></h3>
+                        <p><strong>Doctor:</strong> <?= htmlspecialchars($r['doctor_name']) ?> (<?= htmlspecialchars($r['specialization']) ?>)</p>
 
-                            <div class="record-body">
-                                <div>
-                                    <h4>Diagnosis</h4>
-                                    <p><?php echo htmlspecialchars($record['diagnosis']); ?></p>
-                                </div>
-                                <div>
-                                    <h4>Treatment</h4>
-                                    <p><?php echo htmlspecialchars($record['treatment']); ?></p>
-                                </div>
+                        <div class="record-body">
+                            <div>
+                                <h4>Diagnosis</h4>
+                                <p><?= htmlspecialchars($r['diagnosis']) ?></p>
                             </div>
-
-                            <div class="record-prescription">
-                                <h4>Prescription</h4>
-                                <p><?php echo htmlspecialchars($record['prescription']); ?></p>
+                            <div>
+                                <h4>Treatment</h4>
+                                <p><?= htmlspecialchars($r['treatment']) ?></p>
                             </div>
-
-                            <?php if (!empty($record['notes'])): ?>
-                                <div class="record-notes">
-                                    <h4>Additional Notes</h4>
-                                    <p><?php echo htmlspecialchars($record['notes']); ?></p>
-                                </div>
-                            <?php endif; ?>
                         </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <div class="no-records">
-                        <p>No medical records found. Records will appear after your visits.</p>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
 
-    <style>
-        .record-card {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        .record-header h3 { color: #0c74a6; margin: 0 0 5px 0; }
-        .record-header p { color: #666; margin: 0; }
-        .record-body { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
-        .record-body h4 { margin: 0 0 10px 0; color: #333; }
-        .record-body p { margin: 0; color: #666; }
-        .record-prescription { margin-top: 15px; background: #f5f5f5; padding: 10px; border-radius: 5px; color: #666; }
-        .record-notes { margin-top: 15px; color: #666; }
-        .no-records { text-align: center; padding: 40px; color: #999; }
-    </style>
+                        <div class="record-prescription">
+                            <h4>Prescription</h4>
+                            <p><?= htmlspecialchars($r['prescription']) ?></p>
+                        </div>
+
+                        <?php if (!empty($r['notes'])): ?>
+                            <div class="record-notes">
+                                <h4>Additional Notes</h4>
+                                <p><?= htmlspecialchars($r['notes']) ?></p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <div class="no-records">
+                    <i class="fas fa-folder-open" style="font-size:2rem; margin-bottom:0.5rem; opacity:0.5;"></i>
+                    <p>No medical records found. Records will appear after your visits.</p>
+                </div>
+            <?php endif; ?>
+
+        </div>
+    </main>
+</div>
 </body>
 </html>

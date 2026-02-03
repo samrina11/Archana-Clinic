@@ -1,64 +1,81 @@
 <?php
 session_start();
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../config/auth.php';
 
 $error = '';
-$success = '';
 
+function validateName($name)
+{
+    $name = trim($name);
+
+    if (empty($name))
+        return "Name is required.";
+    if (!preg_match("/^[A-Za-z]+( [A-Za-z]+)*$/", $name))
+        return "Name must contain only letters and spaces.";
+    if (strlen($name) < 10 || strlen($name) > 30)
+        return "Name must be between 10 and 30 characters.";
+
+    return true;
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $name     = trim($_POST['name'] ?? '');
     $email    = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $phone    = trim($_POST['phone'] ?? '');
-    $role     = 'patient';
 
     // ------------------------
-    // Backend Validation (FINAL)
+    // Backend Validation
     // ------------------------
-    if (empty($name) || empty($email) || empty($password) || empty($phone)) {
-        $error = "Please fill all required fields.";
-    } 
-    elseif (!preg_match("/^[A-Za-z]+( [A-Za-z]+)* {10,50}$/", $name)) {
-        $error = "Name must be 10–50 characters, letters and spaces only. ";
-    } 
-    elseif (!preg_match("/^[a-zA-Z0-9._%+-]+@[a-zA-Z.-]+\.[a-zA-Z]{2,}$/", $email)) {
+      if (validateName($name) !== true) {
+        $error = validateName($name);
+    }
+    elseif (!preg_match("/^[a-zA-Z0-9._%+-]+@gmail\.com$/",$email )) {
         $error = "Invalid email address.";
-    } 
+    }
     elseif (!preg_match("/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/", $password)) {
         $error = "Password must be at least 8 characters and include uppercase, lowercase, number, and special character.";
-    } 
+    }
     elseif (!preg_match("/^\d{10}$/", $phone)) {
         $error = "Phone number must be exactly 10 digits.";
-    } 
+    }elseif (empty($name) || empty($email) || empty($password) || empty($phone)) {
+        $error = "Please fill all required fields.";
+    }
     else {
 
-        // Check if email already exists
-        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        $stmt->store_result();
+        // Check email exists
+        $check = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        $check->bind_param("s", $email);
+        $check->execute();
+        $check->store_result();
 
-        if ($stmt->num_rows > 0) {
+        if ($check->num_rows > 0) {
             $error = "Email already registered.";
-        } 
-        else {
+        } else {
 
-            if ($auth->registerPatient(
-                $name,
-                $email,
-                $password,
-                $phone,
-                null, null, null, null, null
-            )) {
+            // Insert user
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-                $auth->login($email, $password);
-                header("Location: /clinic/patient/patient-dashboard.php");
-                exit;
+            $stmt = $conn->prepare("
+                INSERT INTO users (name, email, password, phone, role)
+                VALUES (?, ?, ?, ?, 'patient')
+            ");
 
+            if ($stmt) {
+                $stmt->bind_param("ssss", $name, $email, $hashedPassword, $phone);
+
+                if ($stmt->execute()) {
+                    $_SESSION['user_id'] = $stmt->insert_id;
+                    $_SESSION['email']   = $email;
+                    $_SESSION['role']    = 'patient';
+
+                    header("Location: /clinic/patient/patient-dashboard.php");
+                    exit;
+                } else {
+                    $error = "Database insert failed: " . $stmt->error;
+                }
             } else {
-                $error = "Registration failed. Please try again.";
+                $error = "Prepare failed: " . $conn->error;
             }
         }
     }
@@ -70,105 +87,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Register Patient - Clinic</title>
+<title>Register Patient</title>
 
 <style>
-body { font-family: Arial, sans-serif; background: #f4f6f8; margin:0; padding:0; }
-.container { max-width: 500px; margin: 50px auto; }
-.box { background: #fff; padding: 40px 30px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-h1 { text-align: center; color: #0c74a6; margin-bottom: 25px; }
-.form-group { margin-bottom: 15px; }
-label { display: block; margin-bottom: 5px; font-weight: 600; }
-input { width: 100%; padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; }
-input:focus { border-color: #0c74a6; outline: none; }
-button { width: 100%; padding: 12px; background: linear-gradient(135deg, #0c74a6, #5bbbe0); border: none; color: white; font-size: 16px; border-radius: 6px; cursor: pointer; margin-top: 10px; }
-.error { background: #ffd6d6; padding: 10px; color: #a10000; margin-bottom: 15px; border-radius:5px; }
+body { font-family: Arial; background:#f4f6f8; }
+.container { max-width:500px; margin:50px auto; }
+.box { background:#fff; padding:30px; border-radius:10px; box-shadow:0 10px 25px rgba(0,0,0,.1); }
+h1 { text-align:center; color:#0c74a6; }
+label { font-weight:600; margin-top:10px; display:block; }
+input { width:100%; padding:10px; margin-top:5px; border:2px solid #ddd; border-radius:6px; }
+button { width:100%; padding:12px; margin-top:15px; background:#0c74a6; color:#fff; border:none; border-radius:6px; }
+.error { background:#ffd6d6; padding:10px; margin-bottom:15px; color:#900; }
 </style>
 </head>
 
 <body>
 <div class="container">
-    <div class="box">
-        <h1>Register Patient</h1>
+<div class="box">
+<h1>Register Patient</h1>
 
-        <?php if ($error): ?>
-            <div class="error"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
+<?php if ($error): ?>
+<div class="error"><?= htmlspecialchars($error) ?></div>
+<?php endif; ?>
 
-        <form method="POST" id="registerForm">
+<form method="POST" id="registerForm">
 
-            <div class="form-group">
-                <label>Full Name *</label>
-                <input type="text" name="name"
-                       value="<?= htmlspecialchars($_POST['name'] ?? '') ?>"
-                       pattern="[A-Za-z ]{10,50}"
-                       title="10–50 characters, letters and spaces only"
-                       required>
-            </div>
+<label>Full Name *</label>
+<input type="text" name="name" required  minlength="10"
+                                maxlength="30" pattern="[A-Za-z]+( [A-Za-z]+)*"
+                                        title="Only letters and spaces allowed (10–30 characters)">
 
-            <div class="form-group">
-                <label>Email *</label>
-                <input type="email" name="email"
-                       value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
-                       required>
-            </div>
+<label>Email *</label>
+<input type="email" name="email" required pattern="[a-zA-Z0-9._%+-]+@gmail\.com" title="Invalid email format">
 
-            <div class="form-group">
-                <label>Password *</label>
-                <input type="password" name="password"
-                       pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}"
-                       title="At least 8 chars with uppercase, lowercase, number & special char"
-                       required>
-            </div>
+<label>Password *</label>
+<input type="password" name="password" required>
 
-            <div class="form-group">
-                <label>Phone *</label>
-                <input type="text" name="phone"
-                       value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>"
-                       pattern="\d{10}"
-                       maxlength="10"
-                       title="Exactly 10 digits"
-                       required>
-            </div>
+<label>Phone *</label>
+<input type="text" name="phone" maxlength="10" required value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
 
-            <button type="submit">Register as Patient</button>
-        </form>
+<button type="submit">Register</button>
+</form>
 
-        <p style="margin-top:15px; text-align:center;">
-            Already have an account? <a href="../login.php">Login here</a>
-        </p>
-    </div>
+<p style="text-align:center;margin-top:15px;">
+Already have account? <a href="../login.php">Login</a>
+</p>
+
+</div>
 </div>
 
-<!-- =========================
- Frontend Validation (JS)
-========================= -->
 <script>
-document.getElementById("registerForm").addEventListener("submit", function (e) {
+document.getElementById("registerForm").addEventListener("submit", function(e) {
 
-    const name = document.querySelector("input[name='name']").value.trim();
-    const email = document.querySelector("input[name='email']").value.trim();
-    const password = document.querySelector("input[name='password']").value;
-    const phone = document.querySelector("input[name='phone']").value.trim();
+    const phone = document.querySelector("[name='phone']").value;
 
-    let error = "";
-
-    if (!/^[A-Za-z ]{10,50}$/.test(name)) {
-        error = "Name must be 10–50 characters and letters only.";
-    }
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        error = "Invalid email address.";
-    }
-    else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(password)) {
-        error = "Password must include uppercase, lowercase, number and special character.";
-    }
-    else if (!/^\d{10}$/.test(phone)) {
-        error = "Phone number must be exactly 10 digits.";
-    }
-
-    if (error !== "") {
+    if (!/^\d{10}$/.test(phone)) {
         e.preventDefault();
-        alert(error);
+        alert("Phone must be exactly 10 digits");
     }
 });
 </script>

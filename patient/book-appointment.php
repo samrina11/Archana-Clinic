@@ -5,7 +5,7 @@ require_once __DIR__ . '/../config/auth.php';
 
 $auth = new Auth($conn);
 
-// Check authentication and role
+// Auth check
 if (!$auth->isLoggedIn() || $_SESSION['role'] !== 'patient') {
     header('Location: ../login.php');
     exit;
@@ -13,104 +13,128 @@ if (!$auth->isLoggedIn() || $_SESSION['role'] !== 'patient') {
 
 $user_id = $_SESSION['user_id'];
 
-// Get Patient Details
+// Patient
 $stmt = $conn->prepare("SELECT * FROM patients WHERE user_id = ?");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $patient = $stmt->get_result()->fetch_assoc();
 
 if (!$patient) {
-    die("Patient profile not found. Please contact administration.");
+    die("Patient profile not found.");
 }
 
-// Fetch doctors
+// Doctors
 $doctors = $conn->query("
-    SELECT d.id, u.name AS doctor_name, d.specialization, d.qualification, 
-           d.consultation_fee, d.available_days, d.available_time_start, d.available_time_end
+    SELECT d.id, u.name AS doctor_name, d.specialization,
+           d.consultation_fee
     FROM doctors d
     JOIN users u ON d.user_id = u.id
-    ORDER BY d.specialization ASC
+    ORDER BY d.specialization
 ");
 
-$success = '';
 $error = '';
+$success = '';
 $show_payment = false;
 $payment_info = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
     $doctor_id = intval($_POST['doctor_id'] ?? 0);
-    $appointment_date = trim($_POST['appointment_date'] ?? '');
     $reason = trim($_POST['reason'] ?? '');
-    
-    // Validation
-    if (!$doctor_id || !$appointment_date || !$reason) {
-        $error = 'All fields are required.';
+    $raw_datetime = trim($_POST['appointment_date'] ?? '');
+
+    // 🔴 CRITICAL FIX: convert datetime-local → MySQL DATETIME
+    $appointment_date = date('Y-m-d H:i:s', strtotime($raw_datetime));
+
+    if (!$doctor_id || !$raw_datetime || !$reason) {
+        $error = "All fields are required.";
     } elseif (strlen($reason) < 10) {
-        $error = 'Reason must be at least 10 characters.';
+        $error = "Reason must be at least 10 characters.";
+    } elseif (strtotime($appointment_date) <= strtotime('+1 day')) {
+        $error = "Appointment must be at least 24 hours in advance.";
     } else {
-        $date_obj = DateTime::createFromFormat('Y-m-d\TH:i', $appointment_date);
-        $min_time = strtotime('+1 day');
-        
-        if (!$date_obj || strtotime($appointment_date) <= $min_time) {
-            $error = 'Appointment must be scheduled at least 24 hours in advance.';
+
+        // Doctor fee
+        $fee_stmt = $conn->prepare(
+            "SELECT consultation_fee FROM doctors WHERE id = ?"
+        );
+        $fee_stmt->bind_param("i", $doctor_id);
+        $fee_stmt->execute();
+        $consultation_fee = $fee_stmt->get_result()
+            ->fetch_assoc()['consultation_fee'] ?? 500;
+
+        // Availability check
+        $check_stmt = $conn->prepare("
+            SELECT id FROM appointments
+            WHERE doctor_id = ?
+              AND appointment_date = ?
+              AND status != 'cancelled'
+        ");
+        $check_stmt->bind_param("is", $doctor_id, $appointment_date);
+        $check_stmt->execute();
+
+        if ($check_stmt->get_result()->num_rows > 0) {
+            $error = "This time slot is already booked.";
         } else {
-            // 1. Get Doctor's Fee
-            $fee_stmt = $conn->prepare("SELECT consultation_fee FROM doctors WHERE id = ?");
-            $fee_stmt->bind_param("i", $doctor_id);
-            $fee_stmt->execute();
-            $doc_res = $fee_stmt->get_result()->fetch_assoc();
-            $consultation_fee = $doc_res['consultation_fee'] ?? 500.00; 
 
-            // 2. Check Availability
-            $check_stmt = $conn->prepare("
-                SELECT id FROM appointments 
-                WHERE patient_id = ? AND doctor_id = ? AND appointment_date = ? AND status != 'cancelled'
+            // Insert appointment
+            $insert_stmt = $conn->prepare("
+                INSERT INTO appointments
+                (patient_id, doctor_id, appointment_date, notes, status, created_at)
+                VALUES (?, ?, ?, ?, 'pending', NOW())
             ");
-            $check_stmt->bind_param("iis", $patient['id'], $doctor_id, $appointment_date);
-            $check_stmt->execute();
-            
-            if ($check_stmt->get_result()->num_rows > 0) {
-                $error = 'You already have an appointment with this doctor at this time.';
-            } else {
-                // 3. Create Appointment
-                $stmt = $conn->prepare("INSERT INTO appointments (patient_id, doctor_id, appointment_date, notes, status, created_at) VALUES (?, ?, ?, ?, 'pending', NOW())");
-                $stmt->bind_param("iiss", $patient['id'], $doctor_id, $appointment_date, $reason);
+            $insert_stmt->bind_param(
+                "iiss",
+                $patient['id'],
+                $doctor_id,
+                $appointment_date,
+                $reason
+            );
 
-                if ($stmt->execute()) {
-                    $new_appointment_id = $conn->insert_id;
+            if ($insert_stmt->execute()) {
 
-                    // 4. Generate Bill Immediately
-                    $due_date = date('Y-m-d', strtotime($appointment_date));
-                    $bill_stmt = $conn->prepare("INSERT INTO billing (patient_id, appointment_id, amount, status, due_date, created_at) VALUES (?, ?, ?, 'unpaid', ?, NOW())");
-                    $bill_stmt->bind_param("iids", $patient['id'], $new_appointment_id, $consultation_fee, $due_date);
-                    
-                    if ($bill_stmt->execute()) {
-                        $new_billing_id = $conn->insert_id;
-                        
-                        // Switch UI to Payment Mode
-                        $show_payment = true;
-                        $payment_info = [
-                            'billing_id' => $new_billing_id,
-                            'amount' => $consultation_fee,
-                            'appt_id' => $new_appointment_id,
-                            'date' => $appointment_date
-                        ];
-                        $success = 'Appointment booked! Proceed to payment.';
-                    } else {
-                        $error = 'Appointment booked, but failed to generate bill.';
-                    }
+                $appointment_id = $conn->insert_id;
+                $due_date = date('Y-m-d', strtotime($appointment_date));
+
+                // Billing
+                $bill_stmt = $conn->prepare("
+                    INSERT INTO billing
+                    (patient_id, appointment_id, amount, status, due_date, created_at)
+                    VALUES (?, ?, ?, 'unpaid', ?, NOW())
+                ");
+                $bill_stmt->bind_param(
+                    "iids",
+                    $patient['id'],
+                    $appointment_id,
+                    $consultation_fee,
+                    $due_date
+                );
+
+                if ($bill_stmt->execute()) {
+                    $show_payment = true;
+                    $payment_info = [
+                        'billing_id' => $conn->insert_id,
+                        'amount' => $consultation_fee,
+                        'appt_id' => $appointment_id,
+                        'date' => $appointment_date
+                    ];
+                    $success = "Appointment booked successfully.";
                 } else {
-                    $error = 'Failed to book appointment. Please try again.';
+                    $error = "Billing creation failed.";
                 }
+
+            } else {
+                $error = "Appointment booking failed.";
             }
         }
     }
 }
 
-// Date Constraints
+// Date limits
 $min_date = date('Y-m-d\TH:i', strtotime('+1 day'));
 $max_date = date('Y-m-d\TH:i', strtotime('+3 months'));
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -400,7 +424,7 @@ $max_date = date('Y-m-d\TH:i', strtotime('+3 months'));
                 </div>
 
                 <?php if ($error): ?>
-                    <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 1rem; rounded: 8px; margin-bottom: 1.5rem; border-radius: 8px;">
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 1rem; margin-bottom: 1.5rem; border-radius: 8px;">
                         <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error) ?>
                     </div>
                 <?php endif; ?>
